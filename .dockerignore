@@ -1,0 +1,16 @@
+.git
+.gitignore
+.DS_Store
+**/.DS_Store
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/node_modules
+**/dist
+.idea
+.vscode
+state/*
+!state/.gitkeep
+load-balancer-test-data.zip
+load-balancer-test-data/
+*.pdf

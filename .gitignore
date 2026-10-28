@@ -1,0 +1,17 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.idea/
+.vscode/
+frontend/node_modules/
+frontend/dist/
+state/*
+!state/.gitkeep
+
+# Assignment material: the brief and the original data bundle (copies of the
+# data files are kept at the repository root).
+*.pdf
+load-balancer-test-data.zip
+load-balancer-test-data/

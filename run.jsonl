@@ -1,0 +1,12 @@
+{"t":0,"event":"REQUEST_ARRIVED","request_id":"r1"}
+{"t":0,"event":"REQUEST_ARRIVED","request_id":"r2"}
+{"t":0,"event":"REQUEST_STARTED","request_id":"r1","server_id":"s1"}
+{"t":0,"event":"REQUEST_STARTED","request_id":"r2","server_id":"s2"}
+{"t":1,"event":"REQUEST_ARRIVED","request_id":"r3"}
+{"t":2,"event":"REQUEST_ARRIVED","request_id":"r4"}
+{"t":2,"event":"REQUEST_FINISHED","request_id":"r1","server_id":"s1"}
+{"t":2,"event":"REQUEST_FINISHED","request_id":"r2","server_id":"s2"}
+{"t":2,"event":"REQUEST_STARTED","request_id":"r3","server_id":"s1"}
+{"t":2,"event":"REQUEST_STARTED","request_id":"r4","server_id":"s2"}
+{"t":3,"event":"REQUEST_FINISHED","request_id":"r4","server_id":"s2"}
+{"t":4,"event":"REQUEST_FINISHED","request_id":"r3","server_id":"s1"}
