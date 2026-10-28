@@ -66,6 +66,20 @@ Strategies live in a registry (`STRATEGIES` in `simulation.py`). Each is a small
 
 All strategies keep FIFO request scanning, memory checks, per-tick rate limits, and deterministic tie-breaking.
 
+## Rate limiting
+
+`rate_limit_per_sec` is enforced as the brief defines it: at most that many `REQUEST_STARTED` events per server per tick. One tick is one second, and, as in the supplied validator, `tick_seconds` must be 1.
+
+- Each server has a start counter that resets to zero at the beginning of every tick's scheduling phase. Each start increments it; finishes do not count.
+- Once a server's counter reaches its limit, the server is no longer a candidate for the rest of that tick. A request it would have taken goes to another eligible server or keeps waiting.
+- A request held back by the limit is not dropped. It keeps its place in the FIFO queue and is offered the fresh budget at the next tick, ahead of younger requests.
+- A limit of 0 disables a server. A request that only fits on disabled servers can never start, so it is dropped on arrival as `no_capacity`.
+- The limit is a fixed one-tick window, not a token bucket. Unused starts do not carry over, so a burst of arrivals is spread evenly across ticks. This keeps the rule identical to the validator's check and fully deterministic.
+- The limit caps starts, not concurrency. In shared-CPU mode, a server with a limit of 2 can run many requests that started over several ticks; memory bounds concurrency there.
+- Autoscaling never changes start limits.
+
+Both validators count starts per server per tick and reject any count above the limit. The tests check the limit on a fixed burst and across randomized workloads.
+
 ## Overload handling
 
 By default the queue is unbounded: every request that can ever run eventually runs, and overload shows up as waiting time and queue length. Three opt-in controls (`QueuePolicy`, set per run from the dashboard or API) bound that behavior:
@@ -147,6 +161,29 @@ The stable latest copy is `state/run.jsonl`. Atomic replacement prevents readers
 
 `docker compose build tests && docker compose run --rm tests` runs the pytest suite in `backend/tests`. Alongside example-based tests of each rule, it runs randomized workloads in both modes and all strategies through both validators, plus an independent per-tick replay of the brief's rules. That replay checks memory, exclusivity, the even CPU split, exact completion, and that no request waits while some server could start it. It also checks determinism under shuffled input, the API against a temporary state directory, and run time under sustained overload.
 
-## Limitations
+## Key assumptions and trade-offs
 
-The API runs simulations synchronously, one at a time. With the event-skipping engine, 5,000 overloaded requests take about 2 seconds and 50,000 about 20 seconds, which fits a request/response flow; Nginx allows 300 seconds per API call and 50 MB uploads. A production workload would need an asynchronous job model and persistent run status. Autoscaling adjusts only CPU; it does not add server instances or change memory/rate capacity.
+Assumptions:
+
+- Events at tick `t` describe the state at the start of tick `t`, as the brief's note says. A request can start in the tick it arrives, is first served during `[start, start + 1)`, and finishes at the first tick boundary after its remaining work reaches zero or below.
+- A finishing request releases its memory before that tick's scheduling, so a server can start a new request in the same tick another one finishes, within its start limit.
+- Memory is reserved for a request's whole run. A request starts only on a server with enough free memory, and it is never preempted or moved to another server.
+- All input values are integers: arrival ticks of 0 or more, work and memory of at least 1, CPU of at least 1, and start limits of 0 or more. Requests arriving in the same tick are ordered by `request_id`, and servers by `id`.
+- In shared-CPU mode, CPU share that a request does not need in its last tick is not given to other requests in that tick.
+- A run uses a snapshot of the server list taken when it starts. Dashboard edits apply to later runs.
+
+Trade-offs:
+
+- **One request per server by default.** That is the model the supplied validator accepts. Shared CPU follows the written execution model but is opt-in (see [Validator compatibility](#validator-compatibility)).
+- **FIFO with skip-ahead.** Letting later requests use capacity an earlier one cannot improves utilization over strict FIFO. The cost is that large requests can starve in shared-CPU mode, which `starvation_guard_ticks` bounds.
+- **Unbounded queue by default.** No request that can run is ever lost, but under sustained overload waits grow without limit. `max_queue_length` and `max_wait_ticks` trade dropped requests for bounded waits.
+- **Exact rational arithmetic.** `Fraction` avoids floating-point drift in CPU shares and completion ticks at some speed cost, which skipping quiet ticks more than recovers.
+- **Downsampled charts.** Series longer than 1,000 ticks are stored as bucket averages to keep `metrics.json` small; summary values still use every tick.
+- **CPU changes are not trace events.** The trace keeps the brief's four event types. Autoscaler changes live in `metrics.json`, so the supplied validator cannot check autoscaled runs; `validate_run_shared.py` replays them.
+- **Files instead of a database.** State is a few JSON files written atomically to a mounted folder, so no database container is needed. A single API process runs one simulation at a time behind a lock, which suits a simulation service but not heavy concurrent use.
+- **Synchronous runs.** A run completes within its API call. With the event-skipping engine, 5,000 overloaded requests take about 2 seconds and 50,000 about 20 seconds; Nginx allows 300 seconds per API call and 50 MB uploads. A production workload would need an asynchronous job model and persistent run status.
+- **Vertical CPU autoscaling only.** The autoscaler does not add server instances or change memory or start limits.
+
+## AI usage
+
+AI tools were used throughout the project. They analyzed the brief, planned the architecture, drafted the code, dashboard, and documentation, and later reviewed the project against the brief and tested it. [`ai-usage.md`](ai-usage.md) records the tools, the prompts, what changed as a result, and how each result was verified.
